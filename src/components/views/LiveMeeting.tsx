@@ -1,5 +1,5 @@
 import React from 'react';
-import { StopCircle } from 'lucide-react';
+import { StopCircle, TestTube } from 'lucide-react';
 import { RecordingControl } from '@/components/meeting/RecordingControl';
 import { LiveTranscript } from '@/components/meeting/LiveTranscript';
 import { ActionItemCard } from '@/components/actionItems/ActionItemCard';
@@ -7,11 +7,26 @@ import { Button } from '@/components/shared/Button';
 import { useMeetingRecorder } from '@/hooks/useMeetingRecorder';
 import { useActionItems } from '@/hooks/useActionItems';
 import { useMeetingStore } from '@/stores/meetingStore';
+import { generateMockTranscript, generateMockActionItems } from '@/lib/mockData';
 
 export const LiveMeeting: React.FC = () => {
   const { currentMeeting, recordingState, start, stop, pause, resume, isProcessing, chunksProcessed } = useMeetingRecorder();
   const { createGitHubIssue } = useActionItems();
-  const { updateTranscriptSegment, approveActionItem, stopMeeting } = useMeetingStore();
+  const { updateTranscriptSegment, approveActionItem, stopMeeting, addTranscriptSegment, addActionItem } = useMeetingStore();
+
+  const handleAddTestData = () => {
+    if (!currentMeeting) return;
+
+    // Add mock transcript segments
+    const mockTranscript = generateMockTranscript(currentMeeting.id);
+    mockTranscript.forEach(segment => addTranscriptSegment(segment));
+
+    // Add mock action items
+    const mockActions = generateMockActionItems(currentMeeting.id);
+    mockActions.forEach(item => addActionItem(item));
+
+    console.log('Added test data to current meeting');
+  };
 
   if (!currentMeeting) return null;
 
@@ -36,14 +51,25 @@ export const LiveMeeting: React.FC = () => {
             {chunksProcessed > 0 && ` • ${chunksProcessed} chunks transcribed`}
           </p>
         </div>
-        <Button
-          variant="ghost"
-          onClick={handleEndMeeting}
-          icon={<StopCircle className="w-4 h-4" />}
-          className="border-2 border-gray-800 hover:border-red-500 hover:text-red-500"
-        >
-          End Meeting
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            onClick={handleAddTestData}
+            icon={<TestTube className="w-4 h-4" />}
+            className="border-2 border-gray-800 hover:border-blue-500 hover:text-blue-500"
+            title="Add test transcript data"
+          >
+            Test Data
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={handleEndMeeting}
+            icon={<StopCircle className="w-4 h-4" />}
+            className="border-2 border-gray-800 hover:border-red-500 hover:text-red-500"
+          >
+            End Meeting
+          </Button>
+        </div>
       </div>
 
       <div className="flex-1 flex overflow-hidden">

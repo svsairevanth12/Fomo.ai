@@ -5,7 +5,11 @@ import { Button } from '@/components/shared/Button';
 import { Card } from '@/components/shared/Card';
 import { useMeetingStore } from '@/stores/meetingStore';
 
-export const Dashboard: React.FC = () => {
+interface DashboardProps {
+  onViewMeeting: (meetingId: string) => void;
+}
+
+export const Dashboard: React.FC<DashboardProps> = ({ onViewMeeting }) => {
   const [showNewMeeting, setShowNewMeeting] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState('');
   const { startMeeting, meetings } = useMeetingStore();
@@ -161,7 +165,13 @@ export const Dashboard: React.FC = () => {
                           <span>{meeting.transcript.length} segments</span>
                         </div>
                       </div>
-                      <Button variant="ghost" size="sm">View</Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onViewMeeting(meeting.id)}
+                      >
+                        View
+                      </Button>
                     </div>
                   </Card>
                 </motion.div>

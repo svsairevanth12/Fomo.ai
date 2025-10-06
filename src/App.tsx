@@ -5,25 +5,41 @@ import { StatusBar } from '@/components/layout/StatusBar';
 import { Dashboard } from '@/components/views/Dashboard';
 import { LiveMeeting } from '@/components/views/LiveMeeting';
 import { MeetingHistory } from '@/components/views/MeetingHistory';
+import { MeetingDetail } from '@/components/views/MeetingDetail';
 import { SettingsView } from '@/components/views/SettingsView';
 import { useMeetingStore } from '@/stores/meetingStore';
 import type { Route } from '@/types';
 
 function App() {
   const [activeRoute, setActiveRoute] = useState<Route>('live');
+  const [viewingMeetingId, setViewingMeetingId] = useState<string | null>(null);
   const { currentMeeting, meetings } = useMeetingStore();
   const isConnected = true; // Always connected (no WebSocket needed)
 
+  const handleViewMeeting = (meetingId: string) => {
+    setViewingMeetingId(meetingId);
+    setActiveRoute('history');
+  };
+
+  const handleBackFromDetail = () => {
+    setViewingMeetingId(null);
+  };
+
   const renderView = () => {
+    // If viewing a specific meeting, show detail view
+    if (viewingMeetingId) {
+      return <MeetingDetail meetingId={viewingMeetingId} onBack={handleBackFromDetail} />;
+    }
+
     switch (activeRoute) {
       case 'live':
-        return currentMeeting ? <LiveMeeting /> : <Dashboard />;
+        return currentMeeting ? <LiveMeeting /> : <Dashboard onViewMeeting={handleViewMeeting} />;
       case 'history':
-        return <MeetingHistory />;
+        return <MeetingHistory onViewMeeting={handleViewMeeting} />;
       case 'settings':
         return <SettingsView />;
       default:
-        return <Dashboard />;
+        return <Dashboard onViewMeeting={handleViewMeeting} />;
     }
   };
 

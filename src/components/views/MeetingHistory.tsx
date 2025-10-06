@@ -6,7 +6,11 @@ import { Button } from '@/components/shared/Button';
 import { useMeetingStore } from '@/stores/meetingStore';
 import { formatDuration } from '@/lib/utils';
 
-export const MeetingHistory: React.FC = () => {
+interface MeetingHistoryProps {
+  onViewMeeting: (meetingId: string) => void;
+}
+
+export const MeetingHistory: React.FC<MeetingHistoryProps> = ({ onViewMeeting }) => {
   const { meetings, deleteMeeting } = useMeetingStore();
 
   return (
@@ -65,12 +69,21 @@ export const MeetingHistory: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onViewMeeting(meeting.id)}
+                      >
                         View
                       </Button>
                       <button
-                        onClick={() => deleteMeeting(meeting.id)}
-                        className="p-2 text-gray-600 hover:text-white hover:bg-gray-900 border-2 border-transparent hover:border-gray-800 transition-all"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Delete "${meeting.title}"? This cannot be undone.`)) {
+                            deleteMeeting(meeting.id);
+                          }
+                        }}
+                        className="p-2 text-gray-600 hover:text-red-500 hover:bg-gray-900 border-2 border-transparent hover:border-red-800 transition-all"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
