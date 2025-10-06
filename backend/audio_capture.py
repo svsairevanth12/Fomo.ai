@@ -20,12 +20,13 @@ class AudioCaptureService:
     """
     System audio capture service with chunked recording
     Records in 2-minute intervals and processes each chunk
+    Supports pause/resume and device selection
     """
-    
+
     def __init__(self, chunk_duration: int = 120):
         """
         Initialize audio capture service
-        
+
         Args:
             chunk_duration: Duration of each chunk in seconds (default: 120 = 2 minutes)
         """
@@ -33,110 +34,210 @@ class AudioCaptureService:
         self.sample_rate = 44100
         self.channels = 2
         self.is_recording = False
+        self.is_paused = False
         self.recording_thread: Optional[threading.Thread] = None
         self.current_meeting_id: Optional[str] = None
         self.chunk_index = 0
         self.chunk_callback: Optional[Callable] = None
         self.audio_queue = queue.Queue()
         self.data_dir = 'data'
+        self.selected_device_id: Optional[int] = None
+        self.pause_event = threading.Event()
+        self.pause_event.set()  # Not paused by default
         os.makedirs(self.data_dir, exist_ok=True)
         
-    def start_recording(self, meeting_id: str, chunk_callback: Optional[Callable] = None):
+    def start_recording(self, meeting_id: str, chunk_callback: Optional[Callable] = None, device_id: Optional[int] = None):
         """
         Start recording system audio
-        
+
         Args:
             meeting_id: Unique identifier for the meeting
             chunk_callback: Function to call when a chunk is ready (receives chunk_path, chunk_index)
+            device_id: Optional device ID to record from (None = default device)
         """
         if self.is_recording:
             raise Exception("Recording already in progress")
-        
+
         self.current_meeting_id = meeting_id
         self.chunk_index = 0
         self.chunk_callback = chunk_callback
+        self.selected_device_id = device_id
         self.is_recording = True
-        
+        self.is_paused = False
+        self.pause_event.set()  # Not paused
+
         # Start recording in a separate thread
         self.recording_thread = threading.Thread(target=self._record_loop, daemon=True)
         self.recording_thread.start()
+
+        device_name = "default device" if device_id is None else f"device {device_id}"
+        print(f"[AudioCapture] Started recording for meeting: {meeting_id} using {device_name}")
         
-        print(f"[AudioCapture] Started recording for meeting: {meeting_id}")
-        
+    def pause_recording(self) -> dict:
+        """
+        Pause the current recording
+
+        Returns:
+            dict: Status of pause operation
+        """
+        if not self.is_recording:
+            return {'success': False, 'error': 'No recording in progress'}
+
+        if self.is_paused:
+            return {'success': False, 'error': 'Recording already paused'}
+
+        self.is_paused = True
+        self.pause_event.clear()  # Signal pause
+
+        print(f"[AudioCapture] Recording paused at chunk {self.chunk_index}")
+
+        return {
+            'success': True,
+            'meeting_id': self.current_meeting_id,
+            'chunk_index': self.chunk_index,
+            'status': 'paused'
+        }
+
+    def resume_recording(self) -> dict:
+        """
+        Resume a paused recording
+
+        Returns:
+            dict: Status of resume operation
+        """
+        if not self.is_recording:
+            return {'success': False, 'error': 'No recording in progress'}
+
+        if not self.is_paused:
+            return {'success': False, 'error': 'Recording not paused'}
+
+        self.is_paused = False
+        self.pause_event.set()  # Signal resume
+
+        print(f"[AudioCapture] Recording resumed at chunk {self.chunk_index}")
+
+        return {
+            'success': True,
+            'meeting_id': self.current_meeting_id,
+            'chunk_index': self.chunk_index,
+            'status': 'recording'
+        }
+
     def stop_recording(self) -> dict:
         """
         Stop recording and return summary
-        
+
         Returns:
             dict: Summary of recording session
         """
         if not self.is_recording:
             return {'success': False, 'error': 'No recording in progress'}
-        
+
         self.is_recording = False
-        
+        self.is_paused = False
+        self.pause_event.set()  # Ensure not blocked
+
         # Wait for recording thread to finish
         if self.recording_thread:
             self.recording_thread.join(timeout=5)
-        
+
         summary = {
             'success': True,
             'meeting_id': self.current_meeting_id,
             'total_chunks': self.chunk_index,
             'duration_seconds': self.chunk_index * self.chunk_duration
         }
-        
+
         print(f"[AudioCapture] Stopped recording. Total chunks: {self.chunk_index}")
-        
+
         # Reset state
         self.current_meeting_id = None
         self.chunk_index = 0
-        
+        self.selected_device_id = None
+
         return summary
     
     def _record_loop(self):
         """
         Main recording loop - captures audio in chunks
+        Supports pause/resume and device selection
         """
         try:
-            # Get default loopback device (system audio)
-            # On Windows, this captures all system audio output
-            speakers = sc.default_speaker()
-            
+            # Get audio device
+            if self.selected_device_id is not None:
+                # Use specific device
+                all_speakers = sc.all_speakers()
+                if self.selected_device_id < len(all_speakers):
+                    speakers = all_speakers[self.selected_device_id]
+                else:
+                    print(f"[AudioCapture] Invalid device ID {self.selected_device_id}, using default")
+                    speakers = sc.default_speaker()
+            else:
+                # Use default loopback device (system audio)
+                speakers = sc.default_speaker()
+
             print(f"[AudioCapture] Using audio device: {speakers.name}")
-            
+
             # Record in chunks
             with speakers.recorder(samplerate=self.sample_rate, channels=self.channels) as mic:
                 while self.is_recording:
-                    # Record one chunk (chunk_duration seconds)
-                    print(f"[AudioCapture] Recording chunk {self.chunk_index}...")
-                    
-                    # Calculate number of frames for chunk duration
-                    frames_per_chunk = int(self.sample_rate * self.chunk_duration)
-                    
-                    # Record audio data
-                    audio_data = mic.record(numframes=frames_per_chunk)
-                    
+                    # Wait if paused
+                    self.pause_event.wait()
+
                     if not self.is_recording:
                         break
-                    
+
+                    # Record one chunk (chunk_duration seconds)
+                    print(f"[AudioCapture] Recording chunk {self.chunk_index}...")
+
+                    # Calculate number of frames for chunk duration
+                    frames_per_chunk = int(self.sample_rate * self.chunk_duration)
+
+                    # Record audio data in smaller segments to allow pause responsiveness
+                    segment_duration = 1  # 1 second segments
+                    frames_per_segment = int(self.sample_rate * segment_duration)
+                    segments_per_chunk = self.chunk_duration // segment_duration
+
+                    audio_segments = []
+                    for i in range(segments_per_chunk):
+                        # Check if paused or stopped
+                        if not self.is_recording:
+                            break
+
+                        self.pause_event.wait()  # Wait if paused
+
+                        if not self.is_recording:
+                            break
+
+                        # Record segment
+                        segment_data = mic.record(numframes=frames_per_segment)
+                        audio_segments.append(segment_data)
+
+                    if not self.is_recording or len(audio_segments) == 0:
+                        break
+
+                    # Combine segments into chunk
+                    import numpy as np
+                    audio_data = np.concatenate(audio_segments, axis=0)
+
                     # Save chunk to file
                     chunk_path = self._save_chunk(audio_data, self.chunk_index)
-                    
+
                     print(f"[AudioCapture] Chunk {self.chunk_index} saved: {chunk_path}")
-                    
+
                     # Call callback if provided
                     if self.chunk_callback:
                         try:
                             self.chunk_callback(chunk_path, self.chunk_index, self.current_meeting_id)
                         except Exception as e:
                             print(f"[AudioCapture] Error in chunk callback: {e}")
-                    
+
                     self.chunk_index += 1
-                    
+
         except Exception as e:
             print(f"[AudioCapture] Recording error: {e}")
             self.is_recording = False
+            self.is_paused = False
     
     def _save_chunk(self, audio_data: np.ndarray, chunk_index: int) -> str:
         """
@@ -167,15 +268,17 @@ class AudioCaptureService:
     def get_status(self) -> dict:
         """
         Get current recording status
-        
+
         Returns:
             dict: Status information
         """
         return {
             'is_recording': self.is_recording,
+            'is_paused': self.is_paused,
             'meeting_id': self.current_meeting_id,
             'current_chunk': self.chunk_index,
-            'chunk_duration': self.chunk_duration
+            'chunk_duration': self.chunk_duration,
+            'selected_device_id': self.selected_device_id
         }
     
     @staticmethod

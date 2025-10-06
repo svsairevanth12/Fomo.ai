@@ -7,9 +7,11 @@ const API_BASE_URL = 'http://localhost:5000';
 
 export interface AudioStatus {
   is_recording: boolean;
+  is_paused: boolean;
   meeting_id: string | null;
   current_chunk: number;
   chunk_duration: number;
+  selected_device_id: number | null;
 }
 
 export interface AudioDevice {
@@ -32,20 +34,72 @@ export class PythonAudioAPI {
   /**
    * Start audio capture on Python backend
    */
-  static async startCapture(meetingId: string): Promise<{ success: boolean; message?: string; error?: string }> {
+  static async startCapture(
+    meetingId: string,
+    deviceId?: number
+  ): Promise<{ success: boolean; message?: string; error?: string; device_id?: number }> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/audio/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ meetingId }),
+        body: JSON.stringify({
+          meetingId,
+          deviceId: deviceId !== undefined ? deviceId : null
+        }),
       });
 
       const data = await response.json();
       return data;
     } catch (error) {
       console.error('[PythonAudioAPI] Error starting capture:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Pause audio capture on Python backend
+   */
+  static async pauseCapture(): Promise<{ success: boolean; status?: string; error?: string }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/audio/pause`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('[PythonAudioAPI] Error pausing capture:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Resume audio capture on Python backend
+   */
+  static async resumeCapture(): Promise<{ success: boolean; status?: string; error?: string }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/audio/resume`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('[PythonAudioAPI] Error resuming capture:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',

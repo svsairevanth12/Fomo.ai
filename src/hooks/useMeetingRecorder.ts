@@ -73,7 +73,11 @@ export const useMeetingRecorder = () => {
   const handleStart = useCallback(async () => {
     try {
       console.log('[MeetingRecorder] Starting Python-based audio capture...');
-      
+
+      // Get selected device from localStorage
+      const selectedDeviceId = localStorage.getItem('selectedAudioDevice');
+      const deviceId = selectedDeviceId ? parseInt(selectedDeviceId, 10) : undefined;
+
       // Start local meeting
       startMeeting();
 
@@ -85,14 +89,17 @@ export const useMeetingRecorder = () => {
         title: `Meeting ${new Date().toLocaleString()}`,
       });
 
-      // Start Python audio capture
-      const result = await PythonAudioAPI.startCapture(meetingId);
+      // Start Python audio capture with selected device
+      const result = await PythonAudioAPI.startCapture(meetingId, deviceId);
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to start audio capture');
       }
 
       console.log('[MeetingRecorder] Audio capture started successfully');
+      if (result.device_id !== undefined) {
+        console.log(`[MeetingRecorder] Using device ID: ${result.device_id}`);
+      }
 
       // Start polling for transcript updates
       startTranscriptPolling(meetingId);
@@ -178,16 +185,23 @@ export const useMeetingRecorder = () => {
     try {
       if (!currentMeeting) return;
 
-      // Note: Python backend doesn't support pause/resume yet
-      // This would need to be implemented in audio_capture.py
-      console.warn('[MeetingRecorder] Pause not yet supported in Python backend');
+      console.log('[MeetingRecorder] Pausing recording...');
 
+      // Pause Python audio capture
+      const result = await PythonAudioAPI.pauseCapture();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to pause recording');
+      }
+
+      // Update local state
       pauseMeeting();
       await api.pauseRecording(currentMeeting.id);
 
-      console.log('[MeetingRecorder] Recording paused');
+      console.log('[MeetingRecorder] Recording paused successfully');
     } catch (error) {
       console.error('[MeetingRecorder] Failed to pause recording:', error);
+      alert('Failed to pause recording. Please try again.');
     }
   }, [currentMeeting, pauseMeeting]);
 
@@ -195,15 +209,23 @@ export const useMeetingRecorder = () => {
     try {
       if (!currentMeeting) return;
 
-      // Note: Python backend doesn't support pause/resume yet
-      console.warn('[MeetingRecorder] Resume not yet supported in Python backend');
+      console.log('[MeetingRecorder] Resuming recording...');
 
+      // Resume Python audio capture
+      const result = await PythonAudioAPI.resumeCapture();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to resume recording');
+      }
+
+      // Update local state
       resumeMeeting();
       await api.resumeRecording(currentMeeting.id);
 
-      console.log('[MeetingRecorder] Recording resumed');
+      console.log('[MeetingRecorder] Recording resumed successfully');
     } catch (error) {
       console.error('[MeetingRecorder] Failed to resume recording:', error);
+      alert('Failed to resume recording. Please try again.');
     }
   }, [currentMeeting, resumeMeeting]);
 

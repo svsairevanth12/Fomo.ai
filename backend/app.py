@@ -200,6 +200,7 @@ def start_audio_capture():
     try:
         data = request.json
         meeting_id = data.get('meetingId')
+        device_id = data.get('deviceId')  # Optional device ID
 
         if not meeting_id:
             return jsonify({'success': False, 'error': 'Meeting ID required'}), 400
@@ -207,6 +208,7 @@ def start_audio_capture():
         # Start audio capture with callback
         audio_service.start_recording(
             meeting_id=meeting_id,
+            device_id=device_id,
             chunk_callback=lambda path, idx, mid: threading.Thread(
                 target=process_audio_chunk,
                 args=(path, idx, mid),
@@ -217,9 +219,30 @@ def start_audio_capture():
         return jsonify({
             'success': True,
             'message': 'Audio capture started',
-            'meeting_id': meeting_id
+            'meeting_id': meeting_id,
+            'device_id': device_id
         })
 
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/audio/pause', methods=['POST'])
+def pause_audio_capture():
+    """Pause Python-based audio capture"""
+    try:
+        result = audio_service.pause_recording()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/audio/resume', methods=['POST'])
+def resume_audio_capture():
+    """Resume Python-based audio capture"""
+    try:
+        result = audio_service.resume_recording()
+        return jsonify(result)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
