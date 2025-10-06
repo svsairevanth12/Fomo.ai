@@ -1,0 +1,228 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-gray-800;
+  }
+
+  body {
+    @apply bg-black text-white font-sans antialiased;
+  }
+
+  /* Custom scrollbar - Black & White */
+  ::-webkit-scrollbar {
+    @apply w-3 h-3;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-black border-l-2 border-gray-900;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-white rounded-none hover:bg-gray-200;
+  }
+
+  /* Selection - Pure white on black */
+  ::selection {
+    @apply bg-white text-black;
+  }
+}
+
+@layer components {
+  /* Custom window drag region */
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+
+  .no-drag-region {
+    -webkit-app-region: no-drag;
+  }
+
+  /* Brutalist Glass Effect */
+  .glass {
+    @apply bg-black/90 backdrop-blur-xl border-2 border-white/10;
+  }
+
+  /* Recording pulse animation */
+  .recording-pulse {
+    animation: recordingPulse 2s ease-in-out infinite;
+  }
+
+  /* Skeleton loader - Black & White */
+  .skeleton {
+    @apply animate-pulse bg-gray-900 rounded-none border border-gray-800;
+  }
+
+  /* Card hover effect - Brutalist */
+  .card-hover {
+    @apply transition-all duration-150 hover:shadow-brutal hover:translate-x-1 hover:translate-y-1;
+  }
+
+  /* Button base styles - Brutalist */
+  .btn {
+    @apply px-6 py-3 rounded-none font-bold uppercase tracking-wider transition-all duration-150
+           inline-flex items-center justify-center gap-3 disabled:opacity-30 disabled:cursor-not-allowed
+           border-2 border-black text-sm;
+  }
+
+  .btn-primary {
+    @apply bg-white text-black border-black hover:bg-gray-100 active:bg-gray-200
+           shadow-brutal hover:shadow-none hover:translate-x-1 hover:translate-y-1;
+  }
+
+  .btn-secondary {
+    @apply bg-black text-white border-white hover:bg-gray-900 active:bg-gray-800
+           shadow-brutal shadow-white/20 hover:shadow-none hover:translate-x-1 hover:translate-y-1;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-white border-white/20 hover:border-white hover:bg-white/5
+           active:bg-white/10;
+  }
+
+  .btn-danger {
+    @apply bg-white text-black border-black hover:bg-gray-200 active:bg-gray-300
+           shadow-brutal hover:shadow-none hover:translate-x-1 hover:translate-y-1;
+  }
+
+  /* Input styles - Brutalist */
+  .input {
+    @apply w-full px-4 py-3 bg-black border-2 border-white rounded-none text-white
+           placeholder:text-gray-500 font-mono
+           focus:outline-none focus:border-gray-300 focus:shadow-brutal
+           transition-all;
+  }
+
+  /* Badge styles - Brutalist */
+  .badge {
+    @apply inline-flex items-center px-3 py-1 rounded-none text-xs font-bold uppercase tracking-widest
+           border-2;
+  }
+
+  .badge-primary {
+    @apply bg-white text-black border-black;
+  }
+
+  .badge-secondary {
+    @apply bg-black text-white border-white;
+  }
+
+  .badge-ghost {
+    @apply bg-transparent text-white border-white/30;
+  }
+
+  /* Tooltip - Brutalist */
+  .tooltip {
+    @apply absolute invisible opacity-0 transition-all duration-200
+           group-hover:visible group-hover:opacity-100 z-50
+           bg-white text-black border-2 border-black px-3 py-2 rounded-none
+           font-mono text-xs uppercase tracking-wider shadow-brutal;
+  }
+
+  /* Brutalist Divider */
+  .divider {
+    @apply border-t-2 border-white/10 my-8;
+  }
+
+  /* Brutalist Section */
+  .section {
+    @apply border-2 border-white/10 p-8 rounded-none;
+  }
+
+  /* Glow effect for recording */
+  .glow-white {
+    animation: glow 2s ease-in-out infinite;
+  }
+}
+
+@layer utilities {
+  /* Text styles */
+  .text-mono {
+    @apply font-mono tracking-wider;
+  }
+
+  .text-brutal {
+    @apply font-black uppercase tracking-wider;
+  }
+
+  /* Brutalist borders */
+  .border-brutal {
+    @apply border-3 border-black;
+  }
+
+  .border-brutal-white {
+    @apply border-3 border-white;
+  }
+
+  /* Truncate with specific lines */
+  .line-clamp-1 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .line-clamp-3 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+
+  /* Brutalist grid pattern background */
+  .grid-pattern {
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  /* Scan line effect */
+  .scan-lines {
+    background: linear-gradient(
+      to bottom,
+      transparent 50%,
+      rgba(255, 255, 255, 0.03) 50%
+    );
+    background-size: 100% 4px;
+    pointer-events: none;
+  }
+}
+
+/* Custom animations */
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.3),
+                0 0 40px rgba(255, 255, 255, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(255, 255, 255, 0.6),
+                0 0 80px rgba(255, 255, 255, 0.2);
+  }
+}
+
+/* Typography enhancements */
+h1, h2, h3, h4, h5, h6 {
+  @apply font-black tracking-tight;
+}
+
+/* Focus styles */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  @apply outline-none ring-2 ring-white ring-offset-2 ring-offset-black;
+}
+
+/* Disable default button styles */
+button {
+  @apply focus:outline-none;
+}

@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(npm view vite-plugin-electron versions --json)",
+      "Bash(npm view vite-plugin-electron-renderer versions --json)",
+      "WebSearch",
+      "Bash(powershell -Command \"cd backend; .\\venv\\Scripts\\activate; python app.py\")",
+      "Bash(powershell -Command \"$env:Path -split '';'' | Select-String -Pattern ''node''\")",
+      "Bash(where node)",
+      "Bash(powershell -Command \"npm run electron:dev\")",
+      "Bash(powershell -Command \"$env:Path = ''C:\\nodejs;'' + $env:Path; npm run electron:dev\")",
+      "Bash(C:nodejsnode.exe C:nodejsnode_modulesnpmbinnpm-cli.js run electron:dev)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
