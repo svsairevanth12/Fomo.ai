@@ -1,6 +1,6 @@
-import React from 'react';
-import { ArrowLeft, Calendar, Clock, Download, Share2 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, Calendar, Clock, Download, Share2, FileText, FileJson, Copy, Mail, Check } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/components/shared/Card';
 import { Button } from '@/components/shared/Button';
 import { Badge } from '@/components/shared/Badge';
@@ -8,6 +8,16 @@ import { ActionItemCard } from '@/components/actionItems/ActionItemCard';
 import { useMeetingStore } from '@/stores/meetingStore';
 import { useActionItems } from '@/hooks/useActionItems';
 import { formatDuration, getSpeakerColor, formatTimestamp } from '@/lib/utils';
+import {
+  exportAsMarkdown,
+  exportAsJSON,
+  exportAsText,
+  downloadFile,
+  copyToClipboard,
+  sanitizeFilename,
+  createEmailBody,
+  generateShareableSummary
+} from '@/lib/exportUtils';
 import type { Meeting, TranscriptSegment } from '@/types';
 
 interface MeetingDetailProps {
@@ -19,6 +29,91 @@ export const MeetingDetail: React.FC<MeetingDetailProps> = ({ meetingId, onBack 
   const { loadMeeting, updateTranscriptSegment, approveActionItem } = useMeetingStore();
   const { createGitHubIssue } = useActionItems();
   const meeting = loadMeeting(meetingId);
+
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+  const shareMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close menus when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setShowExportMenu(false);
+      }
+      if (shareMenuRef.current && !shareMenuRef.current.contains(event.target as Node)) {
+        setShowShareMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleExport = (format: 'markdown' | 'json' | 'text') => {
+    if (!meeting) return;
+
+    let content: string;
+    let extension: string;
+    let mimeType: string;
+
+    switch (format) {
+      case 'markdown':
+        content = exportAsMarkdown(meeting);
+        extension = 'md';
+        mimeType = 'text/markdown';
+        break;
+      case 'json':
+        content = exportAsJSON(meeting);
+        extension = 'json';
+        mimeType = 'application/json';
+        break;
+      case 'text':
+        content = exportAsText(meeting);
+        extension = 'txt';
+        mimeType = 'text/plain';
+        break;
+    }
+
+    const filename = sanitizeFilename(meeting.title, extension);
+    downloadFile(content, filename, mimeType);
+    setShowExportMenu(false);
+  };
+
+  const handleCopyTranscript = async () => {
+    if (!meeting) return;
+
+    const content = exportAsMarkdown(meeting);
+    const success = await copyToClipboard(content);
+
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+    setShowShareMenu(false);
+  };
+
+  const handleCopySummary = async () => {
+    if (!meeting) return;
+
+    const summary = generateShareableSummary(meeting);
+    const success = await copyToClipboard(summary);
+
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+    setShowShareMenu(false);
+  };
+
+  const handleEmailShare = () => {
+    if (!meeting) return;
+
+    const emailUrl = createEmailBody(meeting);
+    window.location.href = emailUrl;
+    setShowShareMenu(false);
+  };
 
   if (!meeting) {
     return (
@@ -47,21 +142,96 @@ export const MeetingDetail: React.FC<MeetingDetailProps> = ({ meetingId, onBack 
             Back
           </Button>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              icon={<Download className="w-4 h-4" />}
-              className="border-2 border-gray-800 hover:border-white"
-            >
-              Export
-            </Button>
-            <Button
-              variant="ghost"
-              icon={<Share2 className="w-4 h-4" />}
-              className="border-2 border-gray-800 hover:border-white"
-            >
-              Share
-            </Button>
+          <div className="flex items-center gap-2 relative">
+            {/* Export Menu */}
+            <div className="relative" ref={exportMenuRef}>
+              <Button
+                variant="ghost"
+                icon={<Download className="w-4 h-4" />}
+                className="border-2 border-gray-800 hover:border-white"
+                onClick={() => setShowExportMenu(!showExportMenu)}
+              >
+                Export
+              </Button>
+
+              <AnimatePresence>
+                {showExportMenu && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="absolute right-0 mt-2 w-48 bg-black border-2 border-white shadow-lg z-50"
+                  >
+                    <button
+                      onClick={() => handleExport('markdown')}
+                      className="w-full px-4 py-3 text-left hover:bg-white hover:text-black transition-all flex items-center gap-3 border-b border-gray-800"
+                    >
+                      <FileText className="w-4 h-4" />
+                      <span className="font-bold uppercase text-sm">Markdown</span>
+                    </button>
+                    <button
+                      onClick={() => handleExport('json')}
+                      className="w-full px-4 py-3 text-left hover:bg-white hover:text-black transition-all flex items-center gap-3 border-b border-gray-800"
+                    >
+                      <FileJson className="w-4 h-4" />
+                      <span className="font-bold uppercase text-sm">JSON</span>
+                    </button>
+                    <button
+                      onClick={() => handleExport('text')}
+                      className="w-full px-4 py-3 text-left hover:bg-white hover:text-black transition-all flex items-center gap-3"
+                    >
+                      <FileText className="w-4 h-4" />
+                      <span className="font-bold uppercase text-sm">Plain Text</span>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Share Menu */}
+            <div className="relative" ref={shareMenuRef}>
+              <Button
+                variant="ghost"
+                icon={copied ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
+                className={`border-2 ${copied ? 'border-green-500 text-green-500' : 'border-gray-800 hover:border-white'}`}
+                onClick={() => setShowShareMenu(!showShareMenu)}
+              >
+                {copied ? 'Copied!' : 'Share'}
+              </Button>
+
+              <AnimatePresence>
+                {showShareMenu && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="absolute right-0 mt-2 w-56 bg-black border-2 border-white shadow-lg z-50"
+                  >
+                    <button
+                      onClick={handleCopyTranscript}
+                      className="w-full px-4 py-3 text-left hover:bg-white hover:text-black transition-all flex items-center gap-3 border-b border-gray-800"
+                    >
+                      <Copy className="w-4 h-4" />
+                      <span className="font-bold uppercase text-sm">Copy Full Transcript</span>
+                    </button>
+                    <button
+                      onClick={handleCopySummary}
+                      className="w-full px-4 py-3 text-left hover:bg-white hover:text-black transition-all flex items-center gap-3 border-b border-gray-800"
+                    >
+                      <Copy className="w-4 h-4" />
+                      <span className="font-bold uppercase text-sm">Copy Summary</span>
+                    </button>
+                    <button
+                      onClick={handleEmailShare}
+                      className="w-full px-4 py-3 text-left hover:bg-white hover:text-black transition-all flex items-center gap-3"
+                    >
+                      <Mail className="w-4 h-4" />
+                      <span className="font-bold uppercase text-sm">Email Transcript</span>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </div>
 
