@@ -1,11 +1,11 @@
 """
 FOMO Backend - AI-Powered Meeting Assistant
 Uses AssemblyAI for transcription and Anthropic Claude for AI features
+Chunked audio processing (no WebSocket/real-time)
 """
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flask_socketio import SocketIO, emit
 import os
 import json
 from datetime import datetime
@@ -17,7 +17,6 @@ load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Storage (using JSON files as simple database)
 DATA_DIR = 'data'
@@ -335,7 +334,10 @@ def create_github_issues(meeting_id):
 
 
 if __name__ == '__main__':
+    print("=" * 60)
     print("FOMO Backend Starting...")
+    print("=" * 60)
     print("API: http://localhost:5000")
-    print("WebSocket: ws://localhost:5000")
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    print("Mode: Chunked audio processing (2-minute segments)")
+    print("=" * 60)
+    app.run(host='0.0.0.0', port=5000, debug=True)
