@@ -8,11 +8,11 @@ Write-Host ""
 
 # Check if Python is installed
 Write-Host "Checking Python installation..." -ForegroundColor Yellow
-try {
-    $pythonVersion = python --version 2>&1
-    Write-Host "✓ Found: $pythonVersion" -ForegroundColor Green
-} catch {
-    Write-Host "✗ Python not found! Please install Python 3.8+" -ForegroundColor Red
+$pythonVersion = python --version 2>&1
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "Found: $pythonVersion" -ForegroundColor Green
+} else {
+    Write-Host "Python not found! Please install Python 3.8+" -ForegroundColor Red
     exit 1
 }
 
@@ -20,34 +20,39 @@ try {
 Write-Host ""
 Write-Host "Creating virtual environment..." -ForegroundColor Yellow
 if (Test-Path "venv") {
-    Write-Host "✓ Virtual environment already exists" -ForegroundColor Green
+    Write-Host "Virtual environment already exists" -ForegroundColor Green
 } else {
     python -m venv venv
-    Write-Host "✓ Virtual environment created" -ForegroundColor Green
+    Write-Host "Virtual environment created" -ForegroundColor Green
 }
 
 # Activate virtual environment
 Write-Host ""
 Write-Host "Activating virtual environment..." -ForegroundColor Yellow
 & .\venv\Scripts\Activate.ps1
-Write-Host "✓ Virtual environment activated" -ForegroundColor Green
+Write-Host "Virtual environment activated" -ForegroundColor Green
 
 # Install dependencies
 Write-Host ""
 Write-Host "Installing dependencies..." -ForegroundColor Yellow
 pip install -r requirements.txt
-Write-Host "✓ Dependencies installed" -ForegroundColor Green
+Write-Host "Dependencies installed" -ForegroundColor Green
 
-# Create .env file if it doesn't exist
+# Create .env file if it does not exist
 Write-Host ""
 Write-Host "Checking .env file..." -ForegroundColor Yellow
 if (Test-Path ".env") {
-    Write-Host "✓ .env file already exists" -ForegroundColor Green
+    Write-Host ".env file already exists" -ForegroundColor Green
 } else {
-    Copy-Item ".env.example" ".env"
-    Write-Host "✓ Created .env file from template" -ForegroundColor Green
+    if (Test-Path ".env.example") {
+        Copy-Item ".env.example" ".env"
+        Write-Host "Created .env file from template" -ForegroundColor Green
+    } else {
+        "ASSEMBLYAI_API_KEY=your_assemblyai_key_here`nANTHROPIC_API_KEY=your_anthropic_key_here" | Out-File -FilePath ".env" -Encoding utf8
+        Write-Host "Created .env file" -ForegroundColor Green
+    }
     Write-Host ""
-    Write-Host "⚠️  IMPORTANT: Edit .env and add your API keys!" -ForegroundColor Yellow
+    Write-Host "IMPORTANT: Edit .env and add your API keys!" -ForegroundColor Yellow
     Write-Host "   - ASSEMBLYAI_API_KEY" -ForegroundColor Yellow
     Write-Host "   - ANTHROPIC_API_KEY" -ForegroundColor Yellow
 }
@@ -56,10 +61,10 @@ if (Test-Path ".env") {
 Write-Host ""
 Write-Host "Creating data directory..." -ForegroundColor Yellow
 if (Test-Path "data") {
-    Write-Host "✓ Data directory already exists" -ForegroundColor Green
+    Write-Host "Data directory already exists" -ForegroundColor Green
 } else {
     New-Item -ItemType Directory -Path "data" | Out-Null
-    Write-Host "✓ Data directory created" -ForegroundColor Green
+    Write-Host "Data directory created" -ForegroundColor Green
 }
 
 Write-Host ""
