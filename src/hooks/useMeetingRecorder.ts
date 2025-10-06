@@ -1,7 +1,7 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import { useMeetingStore } from '@/stores/meetingStore';
 import { api } from '@/services/api';
-import { audioRecorder, type AudioChunk } from '@/services/audioRecorder';
+import { PythonAudioAPI } from '@/services/pythonAudioApi';
 
 export const useMeetingRecorder = () => {
   const {
@@ -12,11 +12,14 @@ export const useMeetingRecorder = () => {
     pauseMeeting,
     resumeMeeting,
     updateDuration,
-    addTranscriptSegment
+    addTranscriptSegment,
+    addActionItem
   } = useMeetingStore();
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [chunksProcessed, setChunksProcessed] = useState(0);
+  const pollingStopRef = useRef<(() => void) | null>(null);
+  const lastTranscriptLengthRef = useRef(0);
 
   // Update duration every second when recording
   useEffect(() => {
@@ -29,131 +32,162 @@ export const useMeetingRecorder = () => {
     return () => clearInterval(interval);
   }, [recordingState.isRecording, recordingState.isPaused, updateDuration]);
 
-  // Handle audio chunk ready - send to backend for transcription
-  const handleChunkReady = useCallback(async (chunk: AudioChunk) => {
-    try {
-      setIsProcessing(true);
-      console.log(`Processing chunk ${chunk.chunkIndex}...`);
-
-      // Save chunk to IndexedDB
-      await audioRecorder.saveChunkToStorage(chunk);
-
-      // Send chunk to backend for transcription
-      const formData = new FormData();
-      formData.append('audio', chunk.blob, `chunk_${chunk.chunkIndex}.webm`);
-      formData.append('meetingId', chunk.meetingId);
-      formData.append('chunkIndex', chunk.chunkIndex.toString());
-
-      const response = await api.transcribeAudioChunk(formData);
-
-      if (response.success && response.data) {
-        // Add transcript segments to meeting
-        response.data.segments.forEach((segment: any) => {
-          addTranscriptSegment({
-            id: segment.id,
-            speaker: segment.speaker,
-            text: segment.text,
-            timestamp: segment.timestamp,
-            confidence: segment.confidence,
-            startTime: segment.startTime,
-            endTime: segment.endTime
+  // Poll for transcript updates from Python backend
+  const startTranscriptPolling = useCallback((meetingId: string) => {
+    console.log('[MeetingRecorder] Starting transcript polling...');
+    
+    const stopPolling = PythonAudioAPI.startPolling(
+      meetingId,
+      (meetingData) => {
+        if (meetingData.transcript && meetingData.transcript.length > lastTranscriptLengthRef.current) {
+          // New transcript segments available
+          const newSegments = meetingData.transcript.slice(lastTranscriptLengthRef.current);
+          
+          newSegments.forEach((segment: any) => {
+            addTranscriptSegment({
+              id: segment.id,
+              speaker: segment.speaker,
+              text: segment.text,
+              timestamp: segment.timestamp,
+              confidence: segment.confidence,
+              startTime: segment.startTime,
+              endTime: segment.endTime
+            });
           });
-        });
-
-        setChunksProcessed((prev) => prev + 1);
-        console.log(`Chunk ${chunk.chunkIndex} transcribed successfully`);
-      }
-    } catch (error) {
-      console.error('Failed to process audio chunk:', error);
-    } finally {
-      setIsProcessing(false);
-    }
+          
+          lastTranscriptLengthRef.current = meetingData.transcript.length;
+          console.log(`[MeetingRecorder] Added ${newSegments.length} new transcript segments`);
+        }
+        
+        // Update chunks processed count
+        if (meetingData.chunksProcessed !== undefined) {
+          setChunksProcessed(meetingData.chunksProcessed);
+        }
+      },
+      3000 // Poll every 3 seconds
+    );
+    
+    pollingStopRef.current = stopPolling;
   }, [addTranscriptSegment]);
 
   const handleStart = useCallback(async () => {
     try {
-      // Check if browser supports audio recording
-      if (!audioRecorder.constructor.isSupported()) {
-        throw new Error('Audio recording not supported in this browser');
-      }
-
+      console.log('[MeetingRecorder] Starting Python-based audio capture...');
+      
       // Start local meeting
       startMeeting();
 
       const meetingId = `meeting_${Date.now()}`;
 
-      // Start audio recording with chunk callback
-      await audioRecorder.startRecording(meetingId, handleChunkReady);
+      // Create meeting on backend
+      await api.createMeeting({
+        id: meetingId,
+        title: `Meeting ${new Date().toLocaleString()}`,
+      });
+
+      // Start Python audio capture
+      const result = await PythonAudioAPI.startCapture(meetingId);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to start audio capture');
+      }
+
+      console.log('[MeetingRecorder] Audio capture started successfully');
+
+      // Start polling for transcript updates
+      startTranscriptPolling(meetingId);
 
       // Notify backend
       await api.startRecording();
 
-      console.log('Meeting recording started');
     } catch (error) {
-      console.error('Failed to start recording:', error);
-      alert('Failed to start recording. Please ensure you grant audio permissions.');
+      console.error('[MeetingRecorder] Failed to start recording:', error);
+      alert('Failed to start recording. Please ensure the Python backend is running and audio devices are available.');
       stopMeeting();
     }
-  }, [startMeeting, stopMeeting, handleChunkReady]);
+  }, [startMeeting, stopMeeting, startTranscriptPolling]);
 
   const handleStop = useCallback(async () => {
     try {
       if (!currentMeeting) return;
 
-      console.log('Stopping recording...');
+      console.log('[MeetingRecorder] Stopping recording...');
 
-      // Stop audio recording and get final chunks
-      const finalChunks = await audioRecorder.stopRecording();
+      // Stop polling
+      if (pollingStopRef.current) {
+        pollingStopRef.current();
+        pollingStopRef.current = null;
+      }
 
-      // Process any remaining chunks
-      for (const chunk of finalChunks) {
-        if (chunk.blob.size > 0) {
-          await handleChunkReady(chunk);
-        }
+      // Stop Python audio capture
+      const result = await PythonAudioAPI.stopCapture();
+
+      if (!result.success) {
+        console.error('[MeetingRecorder] Error stopping capture:', result.error);
+      } else {
+        console.log(`[MeetingRecorder] Capture stopped. Total chunks: ${result.total_chunks}`);
       }
 
       // Generate meeting summary and action items
       setIsProcessing(true);
-      console.log('Generating meeting summary...');
+      console.log('[MeetingRecorder] Generating meeting summary...');
+
+      // Wait a bit for final transcription to complete
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       const summaryResponse = await api.generateMeetingSummary(currentMeeting.id);
 
-      if (summaryResponse.success) {
-        console.log('Meeting summary generated successfully');
+      if (summaryResponse.success && summaryResponse.data) {
+        console.log('[MeetingRecorder] Meeting summary generated successfully');
+        
+        // Add action items if available
+        if (summaryResponse.data.actionItems) {
+          summaryResponse.data.actionItems.forEach((item: any) => {
+            addActionItem({
+              id: item.id,
+              text: item.text,
+              assignee: item.assignee || undefined,
+              priority: item.priority || 'medium',
+              status: item.status || 'pending',
+              meetingId: currentMeeting.id,
+              timestamp: item.timestamp || Date.now(),
+              context: item.context
+            });
+          });
+        }
       }
 
       // Notify backend
       await api.stopRecording(currentMeeting.id);
-
-      // Clear chunks from storage
-      await audioRecorder.clearMeetingChunks(currentMeeting.id);
 
       // Stop local meeting
       stopMeeting();
 
       setChunksProcessed(0);
       setIsProcessing(false);
+      lastTranscriptLengthRef.current = 0;
 
-      console.log('Recording stopped successfully');
+      console.log('[MeetingRecorder] Recording stopped successfully');
     } catch (error) {
-      console.error('Failed to stop recording:', error);
+      console.error('[MeetingRecorder] Failed to stop recording:', error);
       setIsProcessing(false);
     }
-  }, [currentMeeting, stopMeeting, handleChunkReady]);
+  }, [currentMeeting, stopMeeting, addActionItem]);
 
   const handlePause = useCallback(async () => {
     try {
       if (!currentMeeting) return;
 
-      // Pause audio recording
-      audioRecorder.pauseRecording();
+      // Note: Python backend doesn't support pause/resume yet
+      // This would need to be implemented in audio_capture.py
+      console.warn('[MeetingRecorder] Pause not yet supported in Python backend');
 
       pauseMeeting();
       await api.pauseRecording(currentMeeting.id);
 
-      console.log('Recording paused');
+      console.log('[MeetingRecorder] Recording paused');
     } catch (error) {
-      console.error('Failed to pause recording:', error);
+      console.error('[MeetingRecorder] Failed to pause recording:', error);
     }
   }, [currentMeeting, pauseMeeting]);
 
@@ -161,17 +195,26 @@ export const useMeetingRecorder = () => {
     try {
       if (!currentMeeting) return;
 
-      // Resume audio recording
-      audioRecorder.resumeRecording();
+      // Note: Python backend doesn't support pause/resume yet
+      console.warn('[MeetingRecorder] Resume not yet supported in Python backend');
 
       resumeMeeting();
       await api.resumeRecording(currentMeeting.id);
 
-      console.log('Recording resumed');
+      console.log('[MeetingRecorder] Recording resumed');
     } catch (error) {
-      console.error('Failed to resume recording:', error);
+      console.error('[MeetingRecorder] Failed to resume recording:', error);
     }
   }, [currentMeeting, resumeMeeting]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingStopRef.current) {
+        pollingStopRef.current();
+      }
+    };
+  }, []);
 
   return {
     currentMeeting,
@@ -184,3 +227,4 @@ export const useMeetingRecorder = () => {
     chunksProcessed
   };
 };
+

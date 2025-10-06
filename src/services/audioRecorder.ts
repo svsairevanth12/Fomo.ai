@@ -1,8 +1,14 @@
 /**
- * Audio Recording Service
- * Handles system audio capture with chunked recording (2-minute intervals)
- * Stores chunks locally and sends to backend for transcription
+ * Audio Recording Service - DEPRECATED
+ *
+ * This file is deprecated. Audio capture is now handled by the Python backend.
+ * The frontend only triggers recording via API calls.
+ *
+ * See: backend/audio_capture.py for the new implementation
  */
+
+// DEPRECATED: Browser-based audio capture removed
+// Audio capture is now handled by Python backend service
 
 export interface AudioChunk {
   id: string;
@@ -26,35 +32,19 @@ const DEFAULT_CONFIG: RecordingConfig = {
 };
 
 class AudioRecorderService {
-  private mediaRecorder: MediaRecorder | null = null;
-  private audioStream: MediaStream | null = null;
-  private chunks: AudioChunk[] = [];
-  private currentMeetingId: string | null = null;
-  private chunkIndex: number = 0;
-  private recordingStartTime: number = 0;
-  private chunkTimer: NodeJS.Timeout | null = null;
-  private config: RecordingConfig = DEFAULT_CONFIG;
-  private onChunkReady: ((chunk: AudioChunk) => void) | null = null;
+  // DEPRECATED: All methods now use Python backend
 
   /**
-   * Start recording system audio
+   * Start recording - DEPRECATED
+   * Now triggers Python backend audio capture
    */
   async startRecording(
     meetingId: string,
     onChunkReady?: (chunk: AudioChunk) => void
   ): Promise<void> {
-    try {
-      // Request system audio capture
-      // @ts-ignore - displayMedia is available in modern browsers
-      this.audioStream = await navigator.mediaDevices.getDisplayMedia({
-        video: false,
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 44100,
-          channelCount: 2
-        }
-      });
+    console.warn('[AudioRecorder] DEPRECATED: Browser-based audio capture removed');
+    console.warn('[AudioRecorder] Use Python backend API: POST /api/audio/start');
+    throw new Error('Browser-based audio capture is deprecated. Use Python backend API.');
 
       // Check if audio track is available
       const audioTracks = this.audioStream.getAudioTracks();

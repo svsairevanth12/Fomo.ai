@@ -1,7 +1,7 @@
 """
 FOMO Backend - AI-Powered Meeting Assistant
 Uses AssemblyAI for transcription and Anthropic Claude for AI features
-Chunked audio processing (no WebSocket/real-time)
+Python-based audio capture with chunked processing
 """
 
 from flask import Flask, request, jsonify
@@ -12,6 +12,8 @@ from datetime import datetime
 import anthropic
 import assemblyai as aai
 from dotenv import load_dotenv
+import threading
+from audio_capture import get_audio_service
 
 load_dotenv()
 
@@ -25,6 +27,9 @@ os.makedirs(DATA_DIR, exist_ok=True)
 # Global clients (will be initialized with API keys from frontend)
 anthropic_client = None
 aai_client = None
+
+# Audio capture service
+audio_service = get_audio_service()
 
 def save_meeting(meeting_data):
     """Save meeting to JSON file"""
@@ -97,22 +102,36 @@ def get_meetings():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/meetings/<meeting_id>', methods=['GET'])
+def get_meeting(meeting_id):
+    """Get a specific meeting"""
+    try:
+        meeting = load_meeting(meeting_id)
+        if not meeting:
+            return jsonify({'success': False, 'error': 'Meeting not found'}), 404
+        return jsonify({'success': True, 'data': meeting})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/meetings', methods=['POST'])
 def create_meeting():
     """Create a new meeting"""
     try:
         data = request.json
+        meeting_id = data.get('id', f"meeting_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
         meeting_data = {
-            'id': f"meeting_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            'id': meeting_id,
             'title': data.get('title', 'Untitled Meeting'),
             'startTime': datetime.now().isoformat(),
             'endTime': None,
             'duration': 0,
-            'status': 'created',
+            'status': 'recording',
             'transcript': [],
             'actionItems': [],
             'summary': None,
-            'audioFile': None
+            'audioFile': None,
+            'chunksProcessed': 0
         }
         save_meeting(meeting_data)
         return jsonify({'success': True, 'data': meeting_data})
@@ -120,29 +139,17 @@ def create_meeting():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/transcribe-chunk', methods=['POST'])
-def transcribe_chunk():
-    """Transcribe audio chunk using AssemblyAI (2-minute segments)"""
+def process_audio_chunk(chunk_path: str, chunk_index: int, meeting_id: str):
+    """
+    Process audio chunk: transcribe and analyze
+    Called automatically when a chunk is ready
+    """
     if not aai_client:
-        return jsonify({'success': False, 'error': 'AssemblyAI not configured'}), 400
+        print(f"[Backend] AssemblyAI not configured, skipping chunk {chunk_index}")
+        return
 
     try:
-        # Get audio chunk from request
-        if 'audio' not in request.files:
-            return jsonify({'success': False, 'error': 'No audio file provided'}), 400
-
-        audio_file = request.files['audio']
-        meeting_id = request.form.get('meetingId')
-        chunk_index = request.form.get('chunkIndex', '0')
-
-        if not meeting_id:
-            return jsonify({'success': False, 'error': 'Meeting ID required'}), 400
-
-        # Save chunk temporarily
-        chunk_path = os.path.join(DATA_DIR, f'{meeting_id}_chunk_{chunk_index}.webm')
-        audio_file.save(chunk_path)
-
-        print(f"Transcribing chunk {chunk_index} for meeting {meeting_id}...")
+        print(f"[Backend] Processing chunk {chunk_index} for meeting {meeting_id}...")
 
         # Transcribe with AssemblyAI
         config = aai.TranscriptionConfig(
@@ -175,25 +182,185 @@ def transcribe_chunk():
             meeting['transcript'].extend(segments)
             save_meeting(meeting)
 
-        # Clean up chunk file
+        print(f"[Backend] Chunk {chunk_index} transcribed: {len(segments)} segments")
+
+        # Clean up chunk file after processing
         try:
             os.remove(chunk_path)
         except:
             pass
 
-        print(f"Chunk {chunk_index} transcribed: {len(segments)} segments")
+    except Exception as e:
+        print(f"[Backend] Error processing chunk {chunk_index}: {e}")
+
+
+@app.route('/api/audio/start', methods=['POST'])
+def start_audio_capture():
+    """Start Python-based audio capture"""
+    try:
+        data = request.json
+        meeting_id = data.get('meetingId')
+
+        if not meeting_id:
+            return jsonify({'success': False, 'error': 'Meeting ID required'}), 400
+
+        # Start audio capture with callback
+        audio_service.start_recording(
+            meeting_id=meeting_id,
+            chunk_callback=lambda path, idx, mid: threading.Thread(
+                target=process_audio_chunk,
+                args=(path, idx, mid),
+                daemon=True
+            ).start()
+        )
 
         return jsonify({
             'success': True,
-            'data': {
-                'segments': segments,
-                'chunkIndex': int(chunk_index),
-                'segmentCount': len(segments)
-            }
+            'message': 'Audio capture started',
+            'meeting_id': meeting_id
         })
+
     except Exception as e:
-        print(f"Transcription error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/audio/stop', methods=['POST'])
+def stop_audio_capture():
+    """Stop Python-based audio capture"""
+    try:
+        summary = audio_service.stop_recording()
+
+        # Trigger final analysis if meeting exists
+        if summary.get('meeting_id'):
+            meeting = load_meeting(summary['meeting_id'])
+            if meeting and len(meeting.get('transcript', [])) > 0:
+                # Analyze meeting in background
+                threading.Thread(
+                    target=analyze_meeting_background,
+                    args=(summary['meeting_id'],),
+                    daemon=True
+                ).start()
+
+        return jsonify(summary)
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/audio/status', methods=['GET'])
+def get_audio_status():
+    """Get current audio capture status"""
+    try:
+        status = audio_service.get_status()
+        return jsonify({'success': True, 'data': status})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/audio/devices', methods=['GET'])
+def list_audio_devices():
+    """List available audio devices"""
+    try:
+        from audio_capture import AudioCaptureService
+        devices = AudioCaptureService.list_audio_devices()
+        return jsonify({'success': True, 'data': devices})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/audio/test', methods=['POST'])
+def test_audio_capture():
+    """Test audio capture for a few seconds"""
+    try:
+        data = request.json or {}
+        duration = data.get('duration', 5)
+
+        from audio_capture import AudioCaptureService
+        result = AudioCaptureService.test_audio_capture(duration)
+
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def analyze_meeting_background(meeting_id: str):
+    """Analyze meeting in background thread"""
+    try:
+        if not anthropic_client:
+            print(f"[Backend] Anthropic not configured, skipping analysis")
+            return
+
+        meeting = load_meeting(meeting_id)
+        if not meeting or len(meeting.get('transcript', [])) == 0:
+            return
+
+        # Build transcript text
+        transcript_text = "\n\n".join([
+            f"{seg['speaker']} ({seg['startTime']}s): {seg['text']}"
+            for seg in meeting['transcript']
+        ])
+
+        # Analyze with Claude
+        message = anthropic_client.messages.create(
+            model="claude-sonnet-4-5-20250929",
+            max_tokens=4096,
+            messages=[{
+                "role": "user",
+                "content": f"""Analyze this meeting transcript and extract:
+
+1. **Action Items**: Tasks that need to be done
+2. **Summary**: Key points and decisions
+3. **Next Steps**: What should happen next
+
+Format as JSON with this structure:
+{{
+  "actionItems": [
+    {{
+      "text": "Task description",
+      "assignee": "Person name or null",
+      "priority": "high" | "medium" | "low",
+      "context": "Relevant conversation context"
+    }}
+  ],
+  "summary": {{
+    "overview": "Brief summary",
+    "keyDecisions": ["Decision 1", "Decision 2"],
+    "nextSteps": ["Step 1", "Step 2"],
+    "blockers": ["Blocker 1"],
+    "topics": ["Topic 1", "Topic 2"]
+  }}
+}}
+
+TRANSCRIPT:
+{transcript_text}
+"""
+            }]
+        )
+
+        # Parse Claude's response
+        response_text = message.content[0].text
+
+        # Extract JSON from response
+        json_start = response_text.find('{')
+        json_end = response_text.rfind('}') + 1
+        analysis = json.loads(response_text[json_start:json_end])
+
+        # Add IDs and timestamps to action items
+        for i, item in enumerate(analysis['actionItems']):
+            item['id'] = f'action_{meeting_id}_{i}'
+            item['meetingId'] = meeting_id
+            item['status'] = 'pending'
+            item['timestamp'] = datetime.now().isoformat()
+
+        meeting['actionItems'] = analysis['actionItems']
+        meeting['summary'] = analysis['summary']
+        meeting['status'] = 'completed'
+        save_meeting(meeting)
+
+        print(f"[Backend] Meeting {meeting_id} analyzed successfully")
+
+    except Exception as e:
+        print(f"[Backend] Error analyzing meeting: {e}")
 
 
 @app.route('/api/meetings/<meeting_id>/analyze', methods=['POST'])

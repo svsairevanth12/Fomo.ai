@@ -125,12 +125,16 @@ class APIService {
   }
 
   // ============ Meeting Management ============
+  async createMeeting(data: { id: string; title: string }): Promise<APIResponse<Meeting>> {
+    return this.client.post('/api/meetings', data);
+  }
+
   async getMeeting(meetingId: string): Promise<APIResponse<Meeting>> {
-    return this.client.get(`/meeting/${meetingId}`);
+    return this.client.get(`/api/meetings/${meetingId}`);
   }
 
   async getAllMeetings(limit = 50, offset = 0): Promise<APIResponse<Meeting[]>> {
-    return this.client.get('/meetings', { params: { limit, offset } });
+    return this.client.get('/api/meetings', { params: { limit, offset } });
   }
 
   async deleteMeeting(meetingId: string): Promise<APIResponse<void>> {
