@@ -1,0 +1,51 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="512" height="512" fill="#000000"/>
+  
+  <!-- Main Logo Container -->
+  <g id="fomo-logo">
+    <!-- Outer Square Border -->
+    <rect x="64" y="64" width="384" height="384" stroke="#FFFFFF" stroke-width="8" fill="none"/>
+    
+    <!-- Inner Square -->
+    <rect x="96" y="96" width="320" height="320" stroke="#FFFFFF" stroke-width="4" fill="none"/>
+    
+    <!-- F Letter - Bold Geometric -->
+    <g id="letter-f">
+      <rect x="140" y="180" width="80" height="16" fill="#FFFFFF"/>
+      <rect x="140" y="180" width="16" height="152" fill="#FFFFFF"/>
+      <rect x="140" y="248" width="60" height="16" fill="#FFFFFF"/>
+    </g>
+    
+    <!-- O Letter - Circle with Recording Dot -->
+    <g id="letter-o">
+      <circle cx="280" cy="256" r="40" stroke="#FFFFFF" stroke-width="16" fill="none"/>
+      <!-- Recording indicator dot -->
+      <circle cx="280" cy="256" r="8" fill="#FFFFFF">
+        <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+    
+    <!-- M Letter - Bold Geometric -->
+    <g id="letter-m">
+      <rect x="340" y="180" width="16" height="152" fill="#FFFFFF"/>
+      <rect x="340" y="180" width="16" height="40" fill="#FFFFFF" transform="rotate(45 348 180)"/>
+      <rect x="372" y="180" width="16" height="40" fill="#FFFFFF" transform="rotate(-45 380 180)"/>
+      <rect x="396" y="180" width="16" height="152" fill="#FFFFFF"/>
+    </g>
+    
+    <!-- Subtitle Text -->
+    <text x="256" y="380" font-family="monospace" font-size="20" font-weight="bold" fill="#FFFFFF" text-anchor="middle" letter-spacing="4">
+      AI MEETING
+    </text>
+    
+    <!-- Grid Pattern Overlay -->
+    <defs>
+      <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+        <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#FFFFFF" stroke-width="0.5" opacity="0.1"/>
+      </pattern>
+    </defs>
+    <rect x="64" y="64" width="384" height="384" fill="url(#grid)"/>
+  </g>
+</svg>
+

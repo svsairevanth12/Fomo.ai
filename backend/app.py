@@ -121,56 +121,79 @@ def create_meeting():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/meetings/<meeting_id>/transcribe', methods=['POST'])
-def transcribe_meeting(meeting_id):
-    """Transcribe audio file using AssemblyAI"""
+@app.route('/api/transcribe-chunk', methods=['POST'])
+def transcribe_chunk():
+    """Transcribe audio chunk using AssemblyAI (2-minute segments)"""
     if not aai_client:
         return jsonify({'success': False, 'error': 'AssemblyAI not configured'}), 400
 
     try:
-        meeting = load_meeting(meeting_id)
-        if not meeting:
-            return jsonify({'success': False, 'error': 'Meeting not found'}), 404
-
-        # Get audio file from request
+        # Get audio chunk from request
         if 'audio' not in request.files:
             return jsonify({'success': False, 'error': 'No audio file provided'}), 400
 
         audio_file = request.files['audio']
-        audio_path = os.path.join(DATA_DIR, f'{meeting_id}_audio.wav')
-        audio_file.save(audio_path)
+        meeting_id = request.form.get('meetingId')
+        chunk_index = request.form.get('chunkIndex', '0')
+
+        if not meeting_id:
+            return jsonify({'success': False, 'error': 'Meeting ID required'}), 400
+
+        # Save chunk temporarily
+        chunk_path = os.path.join(DATA_DIR, f'{meeting_id}_chunk_{chunk_index}.webm')
+        audio_file.save(chunk_path)
+
+        print(f"Transcribing chunk {chunk_index} for meeting {meeting_id}...")
 
         # Transcribe with AssemblyAI
         config = aai.TranscriptionConfig(
             speaker_labels=True,
-            auto_chapters=True,
-            entity_detection=True,
-            sentiment_analysis=True
+            language_detection=True
         )
 
         transcriber = aai.Transcriber()
-        transcript = transcriber.transcribe(audio_path, config=config)
+        transcript = transcriber.transcribe(chunk_path, config=config)
 
         # Convert to our format
         segments = []
-        for utterance in transcript.utterances:
-            segments.append({
-                'id': f'seg_{len(segments)}',
-                'speaker': f'Speaker {utterance.speaker}',
-                'text': utterance.text,
-                'startTime': utterance.start,
-                'endTime': utterance.end,
-                'confidence': utterance.confidence,
-                'timestamp': utterance.start
-            })
+        if transcript.utterances:
+            for i, utterance in enumerate(transcript.utterances):
+                segments.append({
+                    'id': f'seg_{meeting_id}_{chunk_index}_{i}',
+                    'speaker': f'Speaker {utterance.speaker}',
+                    'text': utterance.text,
+                    'startTime': utterance.start / 1000,  # Convert to seconds
+                    'endTime': utterance.end / 1000,
+                    'confidence': utterance.confidence,
+                    'timestamp': utterance.start / 1000
+                })
 
-        meeting['transcript'] = segments
-        meeting['status'] = 'transcribed'
-        meeting['audioFile'] = audio_path
-        save_meeting(meeting)
+        # Load meeting and append segments
+        meeting = load_meeting(meeting_id)
+        if meeting:
+            if 'transcript' not in meeting:
+                meeting['transcript'] = []
+            meeting['transcript'].extend(segments)
+            save_meeting(meeting)
 
-        return jsonify({'success': True, 'data': meeting})
+        # Clean up chunk file
+        try:
+            os.remove(chunk_path)
+        except:
+            pass
+
+        print(f"Chunk {chunk_index} transcribed: {len(segments)} segments")
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'segments': segments,
+                'chunkIndex': int(chunk_index),
+                'segmentCount': len(segments)
+            }
+        })
     except Exception as e:
+        print(f"Transcription error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -306,39 +329,9 @@ def create_github_issues(meeting_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# ============ WebSocket for Real-Time Transcription ============
-
-@socketio.on('connect')
-def handle_connect():
-    """Client connected"""
-    print('Client connected')
-    emit('connected', {'status': 'ready'})
-
-
-@socketio.on('start_transcription')
-def handle_start_transcription(data):
-    """Start real-time transcription"""
-    if not aai_client:
-        emit('error', {'message': 'AssemblyAI not configured'})
-        return
-
-    meeting_id = data.get('meeting_id')
-    emit('transcription_started', {'meeting_id': meeting_id})
-
-
-@socketio.on('audio_data')
-def handle_audio_data(data):
-    """Receive audio data for real-time transcription"""
-    # This would process audio chunks with AssemblyAI real-time API
-    # For now, emit mock data
-    pass
-
-
-@socketio.on('stop_transcription')
-def handle_stop_transcription(data):
-    """Stop real-time transcription"""
-    meeting_id = data.get('meeting_id')
-    emit('transcription_stopped', {'meeting_id': meeting_id})
+# ============ WebSocket Removed ============
+# Real-time transcription removed in favor of chunked batch processing
+# Audio is recorded in 2-minute chunks and transcribed via REST API
 
 
 if __name__ == '__main__':

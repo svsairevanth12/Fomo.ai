@@ -9,7 +9,7 @@ import { useActionItems } from '@/hooks/useActionItems';
 import { useMeetingStore } from '@/stores/meetingStore';
 
 export const LiveMeeting: React.FC = () => {
-  const { currentMeeting, recordingState, start, stop, pause, resume } = useMeetingRecorder();
+  const { currentMeeting, recordingState, start, stop, pause, resume, isProcessing, chunksProcessed } = useMeetingRecorder();
   const { createGitHubIssue } = useActionItems();
   const { updateTranscriptSegment, approveActionItem, stopMeeting } = useMeetingStore();
 
@@ -31,7 +31,9 @@ export const LiveMeeting: React.FC = () => {
         <div>
           <h1 className="text-2xl font-black uppercase">{currentMeeting.title}</h1>
           <p className="text-gray-500 text-sm mt-1 uppercase tracking-wider">
-            Live Recording Session
+            {recordingState.isRecording ? 'Recording in progress' : 'Meeting paused'}
+            {isProcessing && ' • Processing audio...'}
+            {chunksProcessed > 0 && ` • ${chunksProcessed} chunks transcribed`}
           </p>
         </div>
         <Button

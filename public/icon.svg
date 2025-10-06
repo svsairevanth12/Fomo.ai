@@ -1,0 +1,41 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="256" height="256" fill="#000000"/>
+  
+  <!-- Main Icon -->
+  <g id="fomo-icon">
+    <!-- Outer Border -->
+    <rect x="32" y="32" width="192" height="192" stroke="#FFFFFF" stroke-width="4" fill="none"/>
+    
+    <!-- Microphone/Recording Symbol -->
+    <g id="mic-symbol">
+      <!-- Mic body -->
+      <rect x="108" y="80" width="40" height="60" rx="20" stroke="#FFFFFF" stroke-width="6" fill="none"/>
+      
+      <!-- Mic stand -->
+      <path d="M 128 140 L 128 170" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+      <path d="M 108 170 L 148 170" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+      
+      <!-- Sound waves -->
+      <path d="M 80 100 Q 70 128 80 156" stroke="#FFFFFF" stroke-width="4" fill="none" stroke-linecap="round"/>
+      <path d="M 176 100 Q 186 128 176 156" stroke="#FFFFFF" stroke-width="4" fill="none" stroke-linecap="round"/>
+      
+      <path d="M 60 90 Q 45 128 60 166" stroke="#FFFFFF" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.6"/>
+      <path d="M 196 90 Q 211 128 196 166" stroke="#FFFFFF" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.6"/>
+      
+      <!-- Recording indicator -->
+      <circle cx="128" cy="50" r="8" fill="#FFFFFF">
+        <animate attributeName="opacity" values="1;0.2;1" dur="1.5s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+    
+    <!-- Grid pattern -->
+    <defs>
+      <pattern id="icon-grid" width="16" height="16" patternUnits="userSpaceOnUse">
+        <path d="M 16 0 L 0 0 0 16" fill="none" stroke="#FFFFFF" stroke-width="0.5" opacity="0.08"/>
+      </pattern>
+    </defs>
+    <rect x="32" y="32" width="192" height="192" fill="url(#icon-grid)"/>
+  </g>
+</svg>
+

@@ -44,9 +44,13 @@ function createWindow() {
 }
 
 function createTray() {
-  // Create a simple 16x16 icon (you'll want to replace this with actual icons)
-  const icon = nativeImage.createEmpty();
-  tray = new Tray(icon);
+  // Load the FOMO icon
+  const iconPath = isDev
+    ? join(__dirname, '../public/icon.svg')
+    : join(__dirname, '../dist/icon.svg');
+
+  const icon = nativeImage.createFromPath(iconPath);
+  tray = new Tray(icon.resize({ width: 16, height: 16 }));
 
   const contextMenu = Menu.buildFromTemplate([
     {

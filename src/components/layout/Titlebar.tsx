@@ -9,9 +9,9 @@ export const Titlebar: React.FC = () => {
 
   return (
     <div className="h-10 bg-black border-b-2 border-white/10 flex items-center justify-between px-4 drag-region">
-      {/* App title */}
+      {/* App title with logo */}
       <div className="flex items-center gap-3 text-sm font-black uppercase tracking-widest">
-        <div className="w-3 h-3 bg-white" />
+        <img src="/logo-small.svg" alt="FOMO" className="w-6 h-6" />
         <span>FOMO</span>
       </div>
 

@@ -31,18 +31,16 @@ class IPCService {
     return await window.electron.audio.getSources();
   }
 
+  // Audio capture is now handled by audioRecorder service
+  // These methods are kept for backward compatibility but are no longer used
   async startAudioCapture(deviceId: string): Promise<{ success: boolean }> {
-    if (!isElectron) {
-      return { success: true };
-    }
-    return await window.electron.audio.startCapture(deviceId);
+    console.log('Audio capture now handled by audioRecorder service');
+    return { success: true };
   }
 
   async stopAudioCapture(): Promise<{ success: boolean }> {
-    if (!isElectron) {
-      return { success: true };
-    }
-    return await window.electron.audio.stopCapture();
+    console.log('Audio capture now handled by audioRecorder service');
+    return { success: true };
   }
 
   // ============ Platform Info ============

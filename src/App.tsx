@@ -7,13 +7,12 @@ import { LiveMeeting } from '@/components/views/LiveMeeting';
 import { MeetingHistory } from '@/components/views/MeetingHistory';
 import { SettingsView } from '@/components/views/SettingsView';
 import { useMeetingStore } from '@/stores/meetingStore';
-import { useWebSocket } from '@/hooks/useWebSocket';
 import type { Route } from '@/types';
 
 function App() {
   const [activeRoute, setActiveRoute] = useState<Route>('live');
   const { currentMeeting, meetings } = useMeetingStore();
-  const { isConnected } = useWebSocket(currentMeeting?.id || null);
+  const isConnected = true; // Always connected (no WebSocket needed)
 
   const renderView = () => {
     switch (activeRoute) {

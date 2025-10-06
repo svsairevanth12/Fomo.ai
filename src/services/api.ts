@@ -78,6 +78,16 @@ class APIService {
     return this.client.patch(`/meeting/${meetingId}/transcript/${segmentId}`, { text });
   }
 
+  // Transcribe audio chunk (2-minute segments)
+  async transcribeAudioChunk(formData: FormData): Promise<APIResponse<any>> {
+    return this.client.post('/api/transcribe-chunk', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      },
+      timeout: 120000 // 2 minutes timeout for transcription
+    });
+  }
+
   // ============ Action Items Endpoints ============
   async getActionItems(meetingId: string): Promise<APIResponse<ActionItem[]>> {
     return this.client.get(`/meeting/${meetingId}/actions`);
@@ -105,6 +115,13 @@ class APIService {
 
   async getSummary(meetingId: string): Promise<APIResponse<MeetingSummary>> {
     return this.client.get(`/meeting/${meetingId}/summary`);
+  }
+
+  // Generate comprehensive meeting summary with action items (called at meeting end)
+  async generateMeetingSummary(meetingId: string): Promise<APIResponse<any>> {
+    return this.client.post(`/api/meetings/${meetingId}/analyze`, {
+      timeout: 60000 // 1 minute timeout for AI analysis
+    });
   }
 
   // ============ Meeting Management ============
