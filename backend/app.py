@@ -8,6 +8,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
 import json
+import logging
 from datetime import datetime
 import anthropic
 import assemblyai as aai
@@ -30,6 +31,15 @@ aai_client = None
 
 # Audio capture service
 audio_service = get_audio_service()
+
+LOG_LEVEL = os.getenv('FOMO_BACKEND_LOG_LEVEL', 'INFO').upper()
+logger = logging.getLogger("fomo.backend")
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("[%(asctime)s] [%(levelname)s] %(name)s: %(message)s"))
+    logger.addHandler(_handler)
+logger.setLevel(LOG_LEVEL)
+logger.propagate = False
 
 def save_meeting(meeting_data):
     """Save meeting to JSON file"""
@@ -145,11 +155,11 @@ def process_audio_chunk(chunk_path: str, chunk_index: int, meeting_id: str):
     Called automatically when a chunk is ready
     """
     if not aai_client:
-        print(f"[Backend] AssemblyAI not configured, skipping chunk {chunk_index}")
+        logger.warning("AssemblyAI not configured, skipping chunk index=%s meeting=%s", chunk_index, meeting_id)
         return
 
     try:
-        print(f"[Backend] Processing chunk {chunk_index} for meeting {meeting_id}...")
+        logger.info("Processing audio chunk meeting=%s index=%s", meeting_id, chunk_index)
 
         # Transcribe with AssemblyAI
         config = aai.TranscriptionConfig(
@@ -180,33 +190,48 @@ def process_audio_chunk(chunk_path: str, chunk_index: int, meeting_id: str):
             if 'transcript' not in meeting:
                 meeting['transcript'] = []
             meeting['transcript'].extend(segments)
+            meeting['chunksProcessed'] = meeting.get('chunksProcessed', 0) + 1
             save_meeting(meeting)
 
-        print(f"[Backend] Chunk {chunk_index} transcribed: {len(segments)} segments")
+        logger.info(
+            "Chunk transcription complete meeting=%s chunk_index=%s segments=%s",
+            meeting_id,
+            chunk_index,
+            len(segments)
+        )
 
         # Clean up chunk file after processing
         try:
             os.remove(chunk_path)
-        except:
-            pass
+        except Exception as cleanup_error:
+            logger.debug("Unable to remove chunk file %s: %s", chunk_path, cleanup_error)
 
     except Exception as e:
-        print(f"[Backend] Error processing chunk {chunk_index}: {e}")
+        logger.error(
+            "Error processing audio chunk meeting=%s chunk_index=%s error=%s",
+            meeting_id,
+            chunk_index,
+            e,
+            exc_info=True
+        )
 
 
 @app.route('/api/audio/start', methods=['POST'])
 def start_audio_capture():
     """Start Python-based audio capture"""
+    meeting_id = None
+    device_id = None
     try:
-        data = request.json
+        data = request.json or {}
         meeting_id = data.get('meetingId')
         device_id = data.get('deviceId')  # Optional device ID
 
         if not meeting_id:
             return jsonify({'success': False, 'error': 'Meeting ID required'}), 400
 
-        # Start audio capture with callback
-        audio_service.start_recording(
+        logger.info("API start audio meeting=%s device_id=%s", meeting_id, device_id)
+
+        device_payload = audio_service.start_recording(
             meeting_id=meeting_id,
             device_id=device_id,
             chunk_callback=lambda path, idx, mid: threading.Thread(
@@ -216,14 +241,17 @@ def start_audio_capture():
             ).start()
         )
 
-        return jsonify({
+        response = {
             'success': True,
             'message': 'Audio capture started',
             'meeting_id': meeting_id,
-            'device_id': device_id
-        })
+            'device': device_payload,
+            'device_id': device_payload.get('id') if isinstance(device_payload, dict) else device_id
+        }
+        return jsonify(response)
 
     except Exception as e:
+        logger.error("API start audio failed meeting=%s error=%s", meeting_id, e, exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -232,8 +260,17 @@ def pause_audio_capture():
     """Pause Python-based audio capture"""
     try:
         result = audio_service.pause_recording()
+        if result.get('success'):
+            logger.info(
+                "API pause audio meeting=%s chunk_index=%s",
+                result.get('meeting_id'),
+                result.get('chunk_index')
+            )
+        else:
+            logger.warning("API pause audio failed: %s", result.get('error'))
         return jsonify(result)
     except Exception as e:
+        logger.error("API pause audio unexpected error: %s", e, exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -242,31 +279,60 @@ def resume_audio_capture():
     """Resume Python-based audio capture"""
     try:
         result = audio_service.resume_recording()
+        if result.get('success'):
+            logger.info(
+                "API resume audio meeting=%s chunk_index=%s",
+                result.get('meeting_id'),
+                result.get('chunk_index')
+            )
+        else:
+            logger.warning("API resume audio failed: %s", result.get('error'))
         return jsonify(result)
     except Exception as e:
+        logger.error("API resume audio unexpected error: %s", e, exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/audio/stop', methods=['POST'])
 def stop_audio_capture():
     """Stop Python-based audio capture"""
+    meeting_id = None
     try:
         summary = audio_service.stop_recording()
+        meeting_id = summary.get('meeting_id')
+
+        if summary.get('success'):
+            logger.info(
+                "API stop audio meeting=%s total_chunks=%s duration=%s",
+                meeting_id,
+                summary.get('total_chunks'),
+                summary.get('duration_seconds')
+            )
+        else:
+            logger.warning(
+                "API stop audio meeting=%s reported error=%s",
+                meeting_id,
+                summary.get('last_error') or summary.get('error')
+            )
+            if summary.get('last_error') and not summary.get('error'):
+                summary['error'] = summary['last_error']
 
         # Trigger final analysis if meeting exists
-        if summary.get('meeting_id'):
-            meeting = load_meeting(summary['meeting_id'])
+        if meeting_id:
+            meeting = load_meeting(meeting_id)
             if meeting and len(meeting.get('transcript', [])) > 0:
                 # Analyze meeting in background
                 threading.Thread(
                     target=analyze_meeting_background,
-                    args=(summary['meeting_id'],),
+                    args=(meeting_id,),
                     daemon=True
                 ).start()
 
-        return jsonify(summary)
+        status_code = 200 if summary.get('success', True) else 500
+        return jsonify(summary), status_code
 
     except Exception as e:
+        logger.error("API stop audio failed meeting=%s error=%s", meeting_id, e, exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -277,6 +343,7 @@ def get_audio_status():
         status = audio_service.get_status()
         return jsonify({'success': True, 'data': status})
     except Exception as e:
+        logger.error("API audio status failed: %s", e, exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -284,10 +351,10 @@ def get_audio_status():
 def list_audio_devices():
     """List available audio devices"""
     try:
-        from audio_capture import AudioCaptureService
-        devices = AudioCaptureService.list_audio_devices()
+        devices = audio_service.get_available_devices(force_refresh=True)
         return jsonify({'success': True, 'data': devices})
     except Exception as e:
+        logger.error("API audio devices failed: %s", e, exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -297,12 +364,15 @@ def test_audio_capture():
     try:
         data = request.json or {}
         duration = data.get('duration', 5)
+        device_id = data.get('deviceId')
 
-        from audio_capture import AudioCaptureService
-        result = AudioCaptureService.test_audio_capture(duration)
+        logger.info("API audio smoke test duration=%s device_id=%s", duration, device_id)
+
+        result = audio_service.run_smoke_test(duration=duration, device_id=device_id)
 
         return jsonify(result)
     except Exception as e:
+        logger.error("API audio smoke test failed: %s", e, exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -310,7 +380,7 @@ def analyze_meeting_background(meeting_id: str):
     """Analyze meeting in background thread"""
     try:
         if not anthropic_client:
-            print(f"[Backend] Anthropic not configured, skipping analysis")
+            logger.warning("Anthropic not configured, skipping analysis for meeting=%s", meeting_id)
             return
 
         meeting = load_meeting(meeting_id)
@@ -380,10 +450,10 @@ TRANSCRIPT:
         meeting['status'] = 'completed'
         save_meeting(meeting)
 
-        print(f"[Backend] Meeting {meeting_id} analyzed successfully")
+        logger.info("Meeting analyzed successfully meeting=%s", meeting_id)
 
     except Exception as e:
-        print(f"[Backend] Error analyzing meeting: {e}")
+        logger.error("Error analyzing meeting=%s error=%s", meeting_id, e, exc_info=True)
 
 
 @app.route('/api/meetings/<meeting_id>/analyze', methods=['POST'])
@@ -524,10 +594,11 @@ def create_github_issues(meeting_id):
 
 
 if __name__ == '__main__':
-    print("=" * 60)
-    print("FOMO Backend Starting...")
-    print("=" * 60)
-    print("API: http://localhost:5000")
-    print("Mode: Chunked audio processing (2-minute segments)")
-    print("=" * 60)
+    separator = "=" * 60
+    logger.info(separator)
+    logger.info("FOMO Backend Starting...")
+    logger.info(separator)
+    logger.info("API: http://localhost:5000")
+    logger.info("Mode: Chunked audio processing (2-minute segments)")
+    logger.info(separator)
     app.run(host='0.0.0.0', port=5000, debug=True)

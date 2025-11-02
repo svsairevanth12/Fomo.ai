@@ -37,7 +37,7 @@ export class PythonAudioAPI {
   static async startCapture(
     meetingId: string,
     deviceId?: number
-  ): Promise<{ success: boolean; message?: string; error?: string; device_id?: number }> {
+  ): Promise<{ success: boolean; message?: string; error?: string; device_id?: number; device?: any }> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/audio/start`, {
         method: 'POST',
@@ -173,14 +173,19 @@ export class PythonAudioAPI {
   /**
    * Test audio capture
    */
-  static async testCapture(duration: number = 5): Promise<AudioTestResult> {
+  static async testCapture(duration: number = 5, deviceId?: number): Promise<AudioTestResult> {
     try {
+      const payload: Record<string, unknown> = { duration };
+      if (deviceId !== undefined) {
+        payload.deviceId = deviceId;
+      }
+
       const response = await fetch(`${API_BASE_URL}/api/audio/test`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ duration }),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
